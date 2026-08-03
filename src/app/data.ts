@@ -1,3 +1,7 @@
+// ─── TypeScript Types ────────────────────────────────────────────────────────
+// localStorage has been replaced by Firebase Firestore + Storage.
+// See src/firebase/ for all data operations.
+
 export interface Profile {
   name: string;
   title: string;
@@ -40,10 +44,12 @@ export interface BlogPost {
   tags: string[];
 }
 
+// ─── Default data (used to seed Firestore on first launch) ──────────────────
+
 export const defaultProfile: Profile = {
   name: "Alex Johnson",
   title: "Full Stack Developer & Researcher",
-  bio: "Passionate developer and researcher with expertise in web technologies, machine learning, and software architecture. I love building solutions that create real impact and collaborating on meaningful projects.",
+  bio: "Passionate developer and researcher with expertise in web technologies, machine learning, and software architecture. I love building solutions that create real impact.",
   avatar: "",
   email: "alex@example.com",
   phone: "+1 (555) 123-4567",
@@ -57,7 +63,7 @@ export const defaultProjects: Project[] = [
   {
     id: "1",
     title: "AI-Powered Task Manager",
-    description: "A smart task management app that uses ML to prioritize and categorize work automatically. Integrates with popular tools like Slack, Jira, and GitHub.",
+    description: "A smart task management app that uses ML to prioritize and categorize work automatically.",
     tags: ["React", "Python", "TensorFlow", "FastAPI"],
     liveUrl: "#",
     githubUrl: "#",
@@ -66,7 +72,7 @@ export const defaultProjects: Project[] = [
   {
     id: "2",
     title: "Real-time Collaboration Platform",
-    description: "A collaborative workspace with real-time editing, video calls, and integrated project management. Supports up to 100 simultaneous users.",
+    description: "A collaborative workspace with real-time editing, video calls, and project management.",
     tags: ["Next.js", "WebRTC", "Socket.io", "PostgreSQL"],
     liveUrl: "#",
     githubUrl: "#",
@@ -75,7 +81,7 @@ export const defaultProjects: Project[] = [
   {
     id: "3",
     title: "Blockchain Voting System",
-    description: "A secure, transparent voting system built on Ethereum with a user-friendly interface. Ensures immutability and verifiability of all votes.",
+    description: "A secure, transparent voting system built on Ethereum with a user-friendly interface.",
     tags: ["Solidity", "Web3.js", "React", "MetaMask"],
     liveUrl: "#",
     githubUrl: "#",
@@ -84,7 +90,7 @@ export const defaultProjects: Project[] = [
   {
     id: "4",
     title: "Health Monitoring Dashboard",
-    description: "A comprehensive health tracking platform with wearable device integration, data visualization, and AI-powered health insights.",
+    description: "A comprehensive health tracking platform with wearable device integration.",
     tags: ["React Native", "Node.js", "MongoDB", "D3.js"],
     liveUrl: "#",
     githubUrl: "#",
@@ -94,64 +100,64 @@ export const defaultProjects: Project[] = [
 
 export const defaultDocuments: Document[] = [
   {
-    id: "1",
+    id: "doc1",
     type: "certificate",
     title: "AWS Certified Solutions Architect",
-    description: "Professional level AWS certification demonstrating expertise in designing distributed systems on AWS cloud infrastructure.",
+    description: "Professional level AWS certification.",
     fileUrl: "#",
     date: "2024-06",
     issuer: "Amazon Web Services",
   },
   {
-    id: "2",
+    id: "doc2",
     type: "certificate",
     title: "Google Professional Cloud Developer",
-    description: "Certification for proficiency in building and deploying scalable applications on Google Cloud Platform.",
+    description: "Certification for GCP proficiency.",
     fileUrl: "#",
     date: "2024-03",
     issuer: "Google Cloud",
   },
   {
-    id: "3",
+    id: "doc3",
     type: "research",
     title: "Efficient Neural Architecture Search for Edge Devices",
-    description: "Research exploring optimization techniques for deploying neural networks on resource-constrained IoT devices with minimal accuracy loss.",
+    description: "Research on deploying neural networks on IoT devices.",
     fileUrl: "#",
     date: "2024-01",
     issuer: "IEEE Conference on AI",
   },
   {
-    id: "4",
+    id: "doc4",
     type: "research",
     title: "Federated Learning in Healthcare Systems",
-    description: "Study on privacy-preserving machine learning techniques applied to distributed healthcare data across multiple institutions.",
+    description: "Privacy-preserving ML in healthcare data.",
     fileUrl: "#",
     date: "2023-09",
     issuer: "ACM Digital Health",
   },
   {
-    id: "5",
+    id: "doc5",
     type: "resume",
     title: "Software Engineer Resume 2024",
-    description: "Current resume highlighting 5+ years of experience in full-stack development, cloud architecture, and research.",
+    description: "Current resume highlighting 5+ years of experience.",
     fileUrl: "#",
     date: "2024-11",
     issuer: "",
   },
   {
-    id: "6",
+    id: "doc6",
     type: "internship",
     title: "Google Summer Internship Report",
-    description: "Comprehensive report on work completed during the summer internship at Google, focusing on ML infrastructure improvements.",
+    description: "Internship report focusing on ML infrastructure.",
     fileUrl: "#",
     date: "2023-09",
     issuer: "Google Inc.",
   },
   {
-    id: "7",
+    id: "doc7",
     type: "internship",
     title: "Microsoft Research Internship Report",
-    description: "Report detailing contributions to Microsoft's AI research team, including work on large language model evaluation frameworks.",
+    description: "Contributions to Microsoft AI research team.",
     fileUrl: "#",
     date: "2022-12",
     issuer: "Microsoft Corporation",
@@ -160,61 +166,27 @@ export const defaultDocuments: Document[] = [
 
 export const defaultBlogPosts: BlogPost[] = [
   {
-    id: "1",
+    id: "blog1",
     title: "Building Scalable React Applications",
-    excerpt: "Best practices and design patterns for building large-scale React applications that stay maintainable as they grow.",
+    excerpt: "Best practices for building large-scale React applications.",
     content: "Full article content goes here...",
     date: "2024-11-15",
     tags: ["React", "Architecture", "JavaScript"],
   },
   {
-    id: "2",
+    id: "blog2",
     title: "Introduction to Quantum Computing",
-    excerpt: "An accessible introduction to quantum computing concepts and their potential impact on software development and cryptography.",
+    excerpt: "An accessible introduction to quantum computing concepts.",
     content: "Full article content goes here...",
     date: "2024-10-20",
     tags: ["Quantum", "Computer Science", "Future Tech"],
   },
   {
-    id: "3",
+    id: "blog3",
     title: "The Future of Web Development in 2025",
-    excerpt: "Exploring emerging technologies and trends — from AI-driven development to Web Assembly — that are reshaping the web.",
+    excerpt: "Emerging technologies reshaping the web.",
     content: "Full article content goes here...",
     date: "2024-09-05",
     tags: ["Web Dev", "Trends", "2025"],
   },
 ];
-
-function loadFromStorage<T>(key: string, defaultValue: T): T {
-  try {
-    const stored = localStorage.getItem(key);
-    if (stored) return JSON.parse(stored) as T;
-  } catch {
-    // ignore
-  }
-  return defaultValue;
-}
-
-export function saveToStorage<T>(key: string, value: T): void {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // ignore
-  }
-}
-
-export function loadProfile(): Profile {
-  return loadFromStorage("portfolio_profile", defaultProfile);
-}
-
-export function loadProjects(): Project[] {
-  return loadFromStorage("portfolio_projects", defaultProjects);
-}
-
-export function loadDocuments(): Document[] {
-  return loadFromStorage("portfolio_documents", defaultDocuments);
-}
-
-export function loadBlogPosts(): BlogPost[] {
-  return loadFromStorage("portfolio_blogs", defaultBlogPosts);
-}

@@ -22,6 +22,7 @@ import {
   EyeIcon,
   EyeOffIcon,
   ShieldCheckIcon,
+  LoaderCircleIcon,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -29,6 +30,8 @@ import { Textarea } from "./ui/textarea";
 import { Label } from "./ui/label";
 import { Badge } from "./ui/badge";
 import { Profile, Project, Document, BlogPost } from "../data";
+import { uploadFile } from "../../firebase/storage";
+import { changeAdminPassword } from "../../firebase/auth";
 
 interface AdminPanelProps {
   profile: Profile;
@@ -38,11 +41,10 @@ interface AdminPanelProps {
   onProfileSave: (profile: Profile) => void;
   onProjectSave: (project: Project) => void;
   onProjectDelete: (id: string) => void;
-  onDocumentAdd: (doc: Document) => void;
+  onDocumentAdd: (doc: Omit<Document, "id">) => void;
   onDocumentDelete: (id: string) => void;
   onBlogSave: (post: BlogPost) => void;
   onBlogDelete: (id: string) => void;
-  onPasswordChange: (newPassword: string) => void;
   onBack: () => void;
 }
 
@@ -60,15 +62,6 @@ function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2);
 }
 
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
 export function AdminPanel({
   profile,
   projects,
@@ -81,7 +74,6 @@ export function AdminPanel({
   onDocumentDelete,
   onBlogSave,
   onBlogDelete,
-  onPasswordChange,
   onBack,
 }: AdminPanelProps) {
   const [activeTab, setActiveTab] = useState<Tab>("profile");
@@ -90,28 +82,43 @@ export function AdminPanel({
   const [profileForm, setProfileForm] = useState<Profile>(profile);
   const [profileSaved, setProfileSaved] = useState(false);
 
-  // Password change state
+  // Password change state (uses Firebase Auth)
   const [currentPw, setCurrentPw] = useState("");
   const [newPw, setNewPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
   const [pwError, setPwError] = useState("");
   const [pwSuccess, setPwSuccess] = useState(false);
+  const [pwLoading, setPwLoading] = useState(false);
   const [showCurrentPw, setShowCurrentPw] = useState(false);
   const [showNewPw, setShowNewPw] = useState(false);
 
-  const handlePasswordChange = () => {
-    const stored = localStorage.getItem("portfolio_admin_password") || "admin@123";
-    if (currentPw !== stored) { setPwError("Current password is incorrect."); return; }
+  const handlePasswordChange = async () => {
     if (newPw.length < 6) { setPwError("New password must be at least 6 characters."); return; }
     if (newPw !== confirmPw) { setPwError("Passwords do not match."); return; }
-    onPasswordChange(newPw);
-    setCurrentPw(""); setNewPw(""); setConfirmPw(""); setPwError("");
-    setPwSuccess(true);
-    setTimeout(() => setPwSuccess(false), 3000);
+    setPwLoading(true);
+    setPwError("");
+    try {
+      await changeAdminPassword(currentPw, newPw);
+      setCurrentPw(""); setNewPw(""); setConfirmPw(""); setPwError("");
+      setPwSuccess(true);
+      setTimeout(() => setPwSuccess(false), 3000);
+    } catch (err: any) {
+      const code = err?.code;
+      if (code === "auth/wrong-password" || code === "auth/invalid-credential") {
+        setPwError("Current password is incorrect.");
+      } else if (code === "auth/weak-password") {
+        setPwError("New password is too weak. Use at least 6 characters.");
+      } else {
+        setPwError("Failed to change password. Please try again.");
+      }
+    } finally {
+      setPwLoading(false);
+    }
   };
 
   const [imageMode, setImageMode] = useState<ImageInputMode>("url");
   const [imageUploading, setImageUploading] = useState(false);
+  const [imageUploadPct, setImageUploadPct] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [docForm, setDocForm] = useState<Omit<Document, "id">>({
@@ -122,6 +129,8 @@ export function AdminPanel({
     date: "",
     issuer: "",
   });
+  const [docFileUploading, setDocFileUploading] = useState(false);
+  const [docUploadPct, setDocUploadPct] = useState(0);
   const docFileRef = useRef<HTMLInputElement>(null);
 
   const handleProfileSave = () => {
@@ -141,28 +150,43 @@ export function AdminPanel({
     const file = e.target.files?.[0];
     if (!file || !editingProject) return;
     setImageUploading(true);
+    setImageUploadPct(0);
     try {
-      const dataUrl = await readFileAsDataUrl(file);
-      setEditingProject({ ...editingProject, image: dataUrl });
+      const path = `projects/${Date.now()}_${file.name}`;
+      const url = await uploadFile(file, path, (pct) => setImageUploadPct(pct));
+      setEditingProject({ ...editingProject, image: url });
+    } catch (err) {
+      console.error("Image upload failed:", err);
     } finally {
       setImageUploading(false);
+      setImageUploadPct(0);
     }
   };
 
   const handleDocFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setDocFileUploading(true);
+    setDocUploadPct(0);
     try {
-      const dataUrl = await readFileAsDataUrl(file);
-      setDocForm({ ...docForm, fileUrl: dataUrl, title: docForm.title || file.name.replace(/\.[^.]+$/, "") });
-    } catch {
-      // fallback: just store filename
+      const path = `documents/${Date.now()}_${file.name}`;
+      const url = await uploadFile(file, path, (pct) => setDocUploadPct(pct));
+      setDocForm((prev) => ({
+        ...prev,
+        fileUrl: url,
+        title: prev.title || file.name.replace(/\.[^.]+$/, ""),
+      }));
+    } catch (err) {
+      console.error("Document upload failed:", err);
+    } finally {
+      setDocFileUploading(false);
+      setDocUploadPct(0);
     }
   };
 
   const handleDocumentAdd = () => {
     if (!docForm.title) return;
-    onDocumentAdd({ ...docForm, id: generateId() });
+    onDocumentAdd({ ...docForm });
     setDocForm({ type: "certificate", title: "", description: "", fileUrl: "", date: "", issuer: "" });
   };
 
@@ -294,7 +318,7 @@ export function AdminPanel({
             </div>
           </div>
 
-          {/* Change Password */}
+          {/* Change Password (Firebase Auth) */}
           <div className="bg-white rounded-2xl border border-slate-200 p-6 max-w-2xl mt-6">
             <div className="flex items-center gap-3 mb-6">
               <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center">
@@ -302,7 +326,7 @@ export function AdminPanel({
               </div>
               <div>
                 <h2 className="text-slate-900" style={{ fontSize: "1rem", fontWeight: 600 }}>Change Admin Password</h2>
-                <p className="text-xs text-slate-400">Use Ctrl+Shift+A on the portfolio page to open the login</p>
+                <p className="text-xs text-slate-400">Updates your Firebase Authentication password</p>
               </div>
             </div>
 
@@ -364,11 +388,11 @@ export function AdminPanel({
 
               <Button
                 onClick={handlePasswordChange}
-                disabled={!currentPw || !newPw || !confirmPw}
+                disabled={!currentPw || !newPw || !confirmPw || pwLoading}
                 className="bg-amber-500 hover:bg-amber-600 text-white"
               >
-                <ShieldCheckIcon className="size-4" />
-                Update Password
+                {pwLoading ? <LoaderCircleIcon className="size-4 animate-spin" /> : <ShieldCheckIcon className="size-4" />}
+                {pwLoading ? "Updating..." : "Update Password"}
               </Button>
             </div>
           </div>
@@ -415,7 +439,6 @@ export function AdminPanel({
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                   {/* Left column – text fields */}
                   <div className="space-y-4">
-                    {/* Step 1 */}
                     <div className="space-y-1.5">
                       <Label className="flex items-center gap-1.5">
                         <span className="w-5 h-5 rounded-full bg-indigo-600 text-white text-xs flex items-center justify-center flex-shrink-0">1</span>
@@ -429,7 +452,6 @@ export function AdminPanel({
                       />
                     </div>
 
-                    {/* Step 2 */}
                     <div className="space-y-1.5">
                       <Label className="flex items-center gap-1.5">
                         <span className="w-5 h-5 rounded-full bg-indigo-600 text-white text-xs flex items-center justify-center flex-shrink-0">2</span>
@@ -444,7 +466,6 @@ export function AdminPanel({
                       />
                     </div>
 
-                    {/* Step 3 */}
                     <div className="space-y-1.5">
                       <Label className="flex items-center gap-1.5">
                         <span className="w-5 h-5 rounded-full bg-indigo-600 text-white text-xs flex items-center justify-center flex-shrink-0">3</span>
@@ -469,7 +490,6 @@ export function AdminPanel({
                       )}
                     </div>
 
-                    {/* Step 4 – Links */}
                     <div className="space-y-3">
                       <Label className="flex items-center gap-1.5">
                         <span className="w-5 h-5 rounded-full bg-indigo-600 text-white text-xs flex items-center justify-center flex-shrink-0">4</span>
@@ -505,7 +525,6 @@ export function AdminPanel({
                       Project Image
                     </Label>
 
-                    {/* Toggle upload mode */}
                     <div className="flex gap-2">
                       <button
                         onClick={() => setImageMode("file")}
@@ -516,7 +535,7 @@ export function AdminPanel({
                         }`}
                       >
                         <UploadIcon className="size-4" />
-                        Upload from device
+                        Upload to Firebase
                       </button>
                       <button
                         onClick={() => setImageMode("url")}
@@ -531,7 +550,6 @@ export function AdminPanel({
                       </button>
                     </div>
 
-                    {/* Upload from device */}
                     {imageMode === "file" && (
                       <div>
                         <input
@@ -548,46 +566,50 @@ export function AdminPanel({
                         >
                           <div className="w-12 h-12 rounded-xl bg-slate-100 group-hover:bg-indigo-50 flex items-center justify-center transition-colors">
                             {imageUploading ? (
-                              <div className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+                              <LoaderCircleIcon className="size-5 text-indigo-400 animate-spin" />
                             ) : (
                               <ImageIcon className="size-6 text-slate-400 group-hover:text-indigo-500 transition-colors" />
                             )}
                           </div>
                           <div className="text-center">
                             <p className="text-sm text-slate-600 group-hover:text-indigo-600">
-                              {imageUploading ? "Loading image..." : "Click to choose image"}
+                              {imageUploading ? `Uploading... ${imageUploadPct}%` : "Click to choose image"}
                             </p>
-                            <p className="text-xs text-slate-400 mt-0.5">PNG, JPG, GIF up to 5MB</p>
+                            <p className="text-xs text-slate-400 mt-0.5">Uploads to Firebase Storage · PNG, JPG, GIF</p>
                           </div>
                         </button>
+                        {imageUploading && (
+                          <div className="mt-2 bg-slate-100 rounded-full h-1.5">
+                            <div
+                              className="bg-indigo-500 h-1.5 rounded-full transition-all"
+                              style={{ width: `${imageUploadPct}%` }}
+                            />
+                          </div>
+                        )}
                       </div>
                     )}
 
-                    {/* URL input */}
                     {imageMode === "url" && (
                       <div className="space-y-2">
                         <Input
-                          value={editingProject.image.startsWith("data:") ? "" : editingProject.image}
+                          value={editingProject.image}
                           onChange={(e) => setEditingProject({ ...editingProject, image: e.target.value })}
                           placeholder="https://example.com/project-screenshot.png"
                         />
                         <p className="text-xs text-slate-400 flex items-start gap-1.5">
                           <InfoIcon className="size-3.5 flex-shrink-0 mt-0.5" />
-                          You can host images on Imgur, Google Photos, GitHub, or any CDN and paste the direct link here.
+                          Host images on Imgur, GitHub, or any CDN and paste the direct link here.
                         </p>
                       </div>
                     )}
 
-                    {/* Image preview */}
                     {editingProject.image && (
                       <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-50">
                         <img
                           src={editingProject.image}
                           alt="Preview"
                           className="w-full h-40 object-cover"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).style.display = "none";
-                          }}
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                         />
                         <button
                           onClick={() => setEditingProject({ ...editingProject, image: "" })}
@@ -612,11 +634,10 @@ export function AdminPanel({
                   </div>
                 </div>
 
-                {/* Save / Cancel */}
                 <div className="flex items-center gap-3 mt-6 pt-5 border-t border-slate-100">
                   <Button
                     onClick={handleProjectSubmit}
-                    disabled={!editingProject.title}
+                    disabled={!editingProject.title || imageUploading}
                     className="bg-indigo-600 hover:bg-indigo-700 text-white px-6"
                   >
                     <SaveIcon className="size-4" />
@@ -634,7 +655,6 @@ export function AdminPanel({
               </div>
             )}
 
-            {/* Projects list */}
             {projects.length === 0 && !editingProject ? (
               <div
                 onClick={openNewProject}
@@ -671,7 +691,7 @@ export function AdminPanel({
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => { setEditingProject(project); setImageMode(project.image?.startsWith("data:") ? "file" : "url"); }}
+                        onClick={() => { setEditingProject(project); setImageMode(project.image?.startsWith("http") ? "url" : "file"); }}
                         className="h-8 w-8 p-0 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
                         title="Edit"
                       >
@@ -699,7 +719,7 @@ export function AdminPanel({
           <div>
             <div className="mb-6">
               <h2 className="text-slate-900" style={{ fontSize: "1.125rem", fontWeight: 600 }}>Manage Documents</h2>
-              <p className="text-sm text-slate-400 mt-0.5">Upload certificates, papers, resumes and internship reports</p>
+              <p className="text-sm text-slate-400 mt-0.5">Upload certificates, papers, resumes and internship reports to Firebase Storage</p>
             </div>
 
             <div className="bg-white rounded-2xl border border-slate-200 p-6 mb-6">
@@ -735,39 +755,47 @@ export function AdminPanel({
                   <Textarea value={docForm.description} onChange={(e) => setDocForm({ ...docForm, description: e.target.value })} rows={2} className="resize-none" />
                 </div>
 
-                {/* File URL or upload */}
                 <div className="space-y-2">
                   <Label>File / PDF</Label>
                   <div className="flex gap-2">
                     <div className="relative flex-1">
                       <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
                       <Input
-                        value={docForm.fileUrl.startsWith("data:") ? "(file uploaded)" : docForm.fileUrl}
+                        value={docForm.fileUrl.startsWith("https://firebasestorage") ? "(uploaded to Firebase)" : docForm.fileUrl}
                         onChange={(e) => setDocForm({ ...docForm, fileUrl: e.target.value })}
                         placeholder="https://drive.google.com/... or paste any PDF link"
                         className="pl-8"
-                        readOnly={docForm.fileUrl.startsWith("data:")}
+                        readOnly={docForm.fileUrl.startsWith("https://firebasestorage")}
                       />
                     </div>
                     <Button
                       type="button"
                       variant="outline"
                       onClick={() => docFileRef.current?.click()}
+                      disabled={docFileUploading}
                       className="flex-shrink-0 border-indigo-200 text-indigo-600 hover:bg-indigo-50"
                     >
-                      <UploadIcon className="size-4" />
-                      Upload File
+                      {docFileUploading ? <LoaderCircleIcon className="size-4 animate-spin" /> : <UploadIcon className="size-4" />}
+                      {docFileUploading ? `${docUploadPct}%` : "Upload File"}
                     </Button>
                     <input ref={docFileRef} type="file" accept=".pdf,.doc,.docx,image/*" className="hidden" onChange={handleDocFileSelect} />
                   </div>
-                  {docForm.fileUrl.startsWith("data:") && (
+                  {docFileUploading && (
+                    <div className="bg-slate-100 rounded-full h-1.5">
+                      <div
+                        className="bg-indigo-500 h-1.5 rounded-full transition-all"
+                        style={{ width: `${docUploadPct}%` }}
+                      />
+                    </div>
+                  )}
+                  {docForm.fileUrl.startsWith("https://firebasestorage") && (
                     <p className="text-xs text-green-600 flex items-center gap-1">
-                      <CheckCircleIcon className="size-3.5" /> File loaded successfully
+                      <CheckCircleIcon className="size-3.5" /> Uploaded to Firebase Storage
                     </p>
                   )}
                   <p className="text-xs text-slate-400 flex items-start gap-1">
                     <InfoIcon className="size-3.5 flex-shrink-0 mt-0.5" />
-                    You can upload a file directly or paste a link from Google Drive, Dropbox, or any public URL.
+                    Upload directly to Firebase Storage, or paste a link from Google Drive, Dropbox, or any public URL.
                   </p>
                 </div>
 
@@ -782,14 +810,13 @@ export function AdminPanel({
                   </div>
                 </div>
 
-                <Button onClick={handleDocumentAdd} disabled={!docForm.title} className="bg-indigo-600 hover:bg-indigo-700 text-white">
+                <Button onClick={handleDocumentAdd} disabled={!docForm.title || docFileUploading} className="bg-indigo-600 hover:bg-indigo-700 text-white">
                   <PlusIcon className="size-4" />
                   Add Document
                 </Button>
               </div>
             </div>
 
-            {/* Documents list */}
             <div className="space-y-3">
               {documents.map((doc) => {
                 const icons: Record<Document["type"], React.ReactNode> = {
