@@ -7,8 +7,30 @@ interface HeroProps {
   documents: Document[];
 }
 
+function downloadFile(url: string, title: string) {
+  if (!url || url === "#") return;
+  let href = url;
+  if (url.startsWith("data:")) {
+    const [header, base64] = url.split(",");
+    const mime = header.match(/:(.*?);/)?.[1] ?? "application/octet-stream";
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    href = URL.createObjectURL(new Blob([bytes], { type: mime }));
+  }
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = title || "resume";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
 export function Hero({ profile, documents }: HeroProps) {
-  const resume = documents.find((d) => d.type === "resume");
+  // Prefer the resume with a real file URL; fall back to any resume
+  const resumes = documents.filter((d) => d.type === "resume");
+  const resume = resumes.find((d) => d.fileUrl && d.fileUrl !== "#") ?? resumes[0];
+  const hasValidResume = !!resume && !!resume.fileUrl && resume.fileUrl !== "#";
 
   const initials = profile.name
     .split(" ")
@@ -102,8 +124,10 @@ export function Hero({ profile, documents }: HeroProps) {
               {resume && (
                 <Button
                   variant="outline"
-                  className="border-indigo-200 text-indigo-600 hover:bg-indigo-50 px-6"
-                  onClick={() => resume.fileUrl !== "#" && window.open(resume.fileUrl, "_blank")}
+                  className="border-indigo-200 text-indigo-600 hover:bg-indigo-50 px-6 disabled:opacity-40 disabled:cursor-not-allowed"
+                  disabled={!hasValidResume}
+                  onClick={() => hasValidResume && downloadFile(resume.fileUrl, resume.title)}
+                  title={!hasValidResume ? "No resume uploaded yet" : "Download Resume"}
                 >
                   <DownloadIcon className="size-4" />
                   Download Resume

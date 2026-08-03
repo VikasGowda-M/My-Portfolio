@@ -8,10 +8,70 @@ import {
   BookOpenIcon,
   FileIcon,
   BriefcaseIcon,
+  ImageIcon,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Document } from "../data";
+
+type FileKind = "pdf" | "image" | "other";
+
+function getFileKind(url: string): FileKind {
+  if (!url || url === "#") return "other";
+  const lower = url.toLowerCase();
+  if (lower.startsWith("data:application/pdf") || lower.includes(".pdf")) return "pdf";
+  if (
+    lower.startsWith("data:image/") ||
+    /\.(png|jpe?g|gif|webp|svg|bmp)(\?|$)/.test(lower)
+  ) return "image";
+  return "other";
+}
+
+// Converts a data URL to a Blob URL so browsers don't block it
+function dataUrlToBlobUrl(dataUrl: string): string {
+  const [header, base64] = dataUrl.split(",");
+  const mime = header.match(/:(.*?);/)?.[1] ?? "application/octet-stream";
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  const blob = new Blob([bytes], { type: mime });
+  return URL.createObjectURL(blob);
+}
+
+function resolveUrl(url: string): string {
+  if (url.startsWith("data:")) return dataUrlToBlobUrl(url);
+  return url;
+}
+
+function handleView(url: string) {
+  if (!url || url === "#") return;
+  const resolved = resolveUrl(url);
+  window.open(resolved, "_blank", "noopener,noreferrer");
+}
+
+function handleDownload(url: string, title: string) {
+  if (!url || url === "#") return;
+  const resolved = resolveUrl(url);
+  const a = document.createElement("a");
+  a.href = resolved;
+  a.download = title || "download";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+function getViewLabel(url: string): string {
+  const kind = getFileKind(url);
+  if (kind === "pdf") return "Open PDF";
+  if (kind === "image") return "View Image";
+  return "View";
+}
+
+function getDownloadLabel(url: string): string {
+  const kind = getFileKind(url);
+  if (kind === "image") return "Open";
+  return "Download";
+}
 
 interface DocumentsProps {
   documents: Document[];
@@ -155,18 +215,22 @@ export function Documents({ documents, isAdmin, onDelete }: DocumentsProps) {
                       variant="outline"
                       size="sm"
                       className="flex-1 border-slate-200 text-slate-600 hover:text-indigo-600 hover:border-indigo-300"
-                      onClick={() => doc.fileUrl !== "#" && window.open(doc.fileUrl, "_blank")}
+                      onClick={() => handleView(doc.fileUrl)}
+                      disabled={!doc.fileUrl || doc.fileUrl === "#"}
                     >
-                      <EyeIcon className="size-3.5" />
-                      View
+                      {getFileKind(doc.fileUrl) === "image"
+                        ? <ImageIcon className="size-3.5" />
+                        : <EyeIcon className="size-3.5" />}
+                      {getViewLabel(doc.fileUrl)}
                     </Button>
                     <Button
                       size="sm"
                       className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white"
-                      onClick={() => doc.fileUrl !== "#" && window.open(doc.fileUrl, "_blank")}
+                      onClick={() => handleDownload(doc.fileUrl, doc.title)}
+                      disabled={!doc.fileUrl || doc.fileUrl === "#"}
                     >
                       <DownloadIcon className="size-3.5" />
-                      Download
+                      {getDownloadLabel(doc.fileUrl)}
                     </Button>
                   </div>
                 </div>
